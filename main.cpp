@@ -1,186 +1,139 @@
 #include <iostream>
 #include <fstream>
- 
-#include "main.h"
+#include <vector>
 
-int read_bmp(char *fileName){
+// Отключаем выравнивание памяти для структур, чтобы гарантировать соответствие с BMP-файлами
+#pragma pack(push, 1)
 
-    
-    // std::cout << fileName << std::endl;
-    // return 0;
+// Структура для хранения информации о пикселе в формате RGBQUAD
+struct RGBQUAD {
+    unsigned char rgbBlue;
+    unsigned char rgbGreen;
+    unsigned char rgbRed;
+    unsigned char rgbReserved;
+};
 
-    // --info-- открываем файл
+// Структура для хранения информации заголовка BMP-файла (BITMAPFILEHEADER)
+struct BITMAPFILEHEADER {
+    uint16_t bfType;       // Сигнатура BMP-файла (должна быть "BM")
+    uint32_t bfSize;       // Размер BMP-файла в байтах
+    uint16_t bfReserved1;  // Зарезервировано (должно быть 0)
+    uint16_t bfReserved2;  // Зарезервировано (должно быть 0)
+    uint32_t bfOffBits;    // Смещение начала данных изображения
+};
+
+// Структура для хранения информации о заголовке BMP-изображения (BITMAPINFOHEADER)
+struct BITMAPINFOHEADER {
+    uint32_t biSize;          // Размер данной структуры (должен быть 40)
+    int32_t biWidth;          // Ширина изображения в пикселях
+    int32_t biHeight;         // Высота изображения в пикселях
+    uint16_t biPlanes;        // Количество плоскостей (должно быть 1)
+    uint16_t biBitCount;      // Битов на пиксель (24 для RGB)
+    uint32_t biCompression;   // Тип сжатия (0 для несжатого изображения)
+    uint32_t biSizeImage;     // Размер изображения в байтах (можно установить 0)
+    int32_t biXPelsPerMeter;  // Горизонтальное разрешение в пикселях на метр (можно установить 0)
+    int32_t biYPelsPerMeter;  // Вертикальное разрешение в пикселях на метр (можно установить 0)
+    uint32_t biClrUsed;       // Количество цветов в палитре (можно установить 0)
+    uint32_t biClrImportant;  // Количество "важных" цветов (можно установить 0)
+};
+
+// Включаем выравнивание памяти обратно
+#pragma pack(pop)
+
+// Функция для чтения BMP-файла и сохранения данных в структуры
+void read_bmp(const char* fileName, BITMAPFILEHEADER& fileHeader, BITMAPINFOHEADER& fileInfoHeader, std::vector<std::vector<RGBQUAD>>& rgbInfo) {
     std::ifstream fileStream(fileName, std::ifstream::binary);
     if (!fileStream) {
         std::cout << "Error opening file '" << fileName << "'." << std::endl;
-        return 0;
+        return;
     }
- 
-    // --info-- заголовк изображения
-    BITMAPFILEHEADER fileHeader;
-    read(fileStream, fileHeader.bfType, sizeof(fileHeader.bfType));
-    read(fileStream, fileHeader.bfSize, sizeof(fileHeader.bfSize));
-    read(fileStream, fileHeader.bfReserved1, sizeof(fileHeader.bfReserved1));
-    read(fileStream, fileHeader.bfReserved2, sizeof(fileHeader.bfReserved2));
-    read(fileStream, fileHeader.bfOffBits, sizeof(fileHeader.bfOffBits));
- 
+
+    // Чтение заголовков файла и изображения
+    fileStream.read(reinterpret_cast<char*>(&fileHeader), sizeof(fileHeader));
+    fileStream.read(reinterpret_cast<char*>(&fileInfoHeader), sizeof(fileInfoHeader));
+
+    // Проверка на сигнатуру BMP-файла
     if (fileHeader.bfType != 0x4D42) {
-        std::cout << "Error: '" << fileName << "' is not BMP file." << std::endl;
+        std::cout << "Error: '" << fileName << "' is not a BMP file." << std::endl;
+        return;
+    }
+
+    const int width = fileInfoHeader.biWidth;
+    const int height = fileInfoHeader.biHeight;
+
+    // Выделение памяти для хранения данных об изображении
+    rgbInfo.resize(height, std::vector<RGBQUAD>(width));
+
+    const int padding = (4 - (width * sizeof(RGBQUAD)) % 4) % 4;
+
+    // Чтение данных об изображении
+    for (int i = 0; i < height; i++) {
+        for (int j = 0; j < width; j++) {
+            fileStream.read(reinterpret_cast<char*>(&rgbInfo[i][j]), sizeof(RGBQUAD));
+        }
+        // Пропуск дополнительных байтов, если они есть (отступы)
+        fileStream.seekg(padding, std::ios::cur);
+    }
+
+    fileStream.close();
+}
+
+// Функция для записи данных изображения в BMP-файл
+void write_bmp(const char* fileName, BITMAPFILEHEADER& fileHeader, BITMAPINFOHEADER& fileInfoHeader, const std::vector<std::vector<RGBQUAD>>& rgbInfo) {
+    std::ofstream fileStream(fileName, std::ofstream::binary);
+    if (!fileStream) {
+        std::cout << "Error opening file '" << fileName << "'." << std::endl;
+        return;
+    }
+
+    // Запись заголовков файла и изображения
+    fileStream.write(reinterpret_cast<char*>(&fileHeader), sizeof(fileHeader));
+    fileStream.write(reinterpret_cast<char*>(&fileInfoHeader), sizeof(fileInfoHeader));
+
+    const int width = fileInfoHeader.biWidth;
+    const int height = fileInfoHeader.biHeight;
+
+    const int padding = (4 - (width * sizeof(RGBQUAD)) % 4) % 4;
+
+    // Запись данных об изображении
+    for (int i = 0; i < height; i++) {
+        for (int j = 0; j < width; j++) {
+            fileStream.write(reinterpret_cast<const char*>(&rgbInfo[i][j]), sizeof(RGBQUAD));
+        }
+        // Запись отступов, если они есть
+        for (int k = 0; k < padding; k++) {
+            unsigned char paddingByte = 0;
+            fileStream.write(reinterpret_cast<const char*>(&paddingByte), sizeof(unsigned char));
+        }
+    }
+
+    fileStream.close();
+}
+
+int main(int argc, char* argv[]) {
+    if (argc < 3) {
+        std::cout << "Usage: " << argv[0] << " input_file output_file" << std::endl;
         return 0;
     }
- 
-    // --info-- информация изображения
+
+    const char* inputFileName = argv[1];
+    const char* outputFileName = argv[2];
+
+    BITMAPFILEHEADER fileHeader;
     BITMAPINFOHEADER fileInfoHeader;
-    read(fileStream, fileInfoHeader.biSize, sizeof(fileInfoHeader.biSize));
- 
-    // --info-- bmp core
-    if (fileInfoHeader.biSize >= 12) {
-        read(fileStream, fileInfoHeader.biWidth, sizeof(fileInfoHeader.biWidth));
-        read(fileStream, fileInfoHeader.biHeight, sizeof(fileInfoHeader.biHeight));
-        read(fileStream, fileInfoHeader.biPlanes, sizeof(fileInfoHeader.biPlanes));
-        read(fileStream, fileInfoHeader.biBitCount, sizeof(fileInfoHeader.biBitCount));
-    }
- 
-    // --info-- получаем информацию о битности
-    int colorsCount = fileInfoHeader.biBitCount >> 3;
-    if (colorsCount < 3) {
-        colorsCount = 3;
-    }
- 
-    int bitsOnColor = fileInfoHeader.biBitCount / colorsCount;
-    int maskValue = (1 << bitsOnColor) - 1;
- 
-    // --info-- bmp v1
-    if (fileInfoHeader.biSize >= 40) {
-        read(fileStream, fileInfoHeader.biCompression, sizeof(fileInfoHeader.biCompression));
-        read(fileStream, fileInfoHeader.biSizeImage, sizeof(fileInfoHeader.biSizeImage));
-        read(fileStream, fileInfoHeader.biXPelsPerMeter, sizeof(fileInfoHeader.biXPelsPerMeter));
-        read(fileStream, fileInfoHeader.biYPelsPerMeter, sizeof(fileInfoHeader.biYPelsPerMeter));
-        read(fileStream, fileInfoHeader.biClrUsed, sizeof(fileInfoHeader.biClrUsed));
-        read(fileStream, fileInfoHeader.biClrImportant, sizeof(fileInfoHeader.biClrImportant));
-    }
- 
-    // --info-- bmp v2
-    fileInfoHeader.biRedMask = 0;
-    fileInfoHeader.biGreenMask = 0;
-    fileInfoHeader.biBlueMask = 0;
- 
-    if (fileInfoHeader.biSize >= 52) {
-        read(fileStream, fileInfoHeader.biRedMask, sizeof(fileInfoHeader.biRedMask));
-        read(fileStream, fileInfoHeader.biGreenMask, sizeof(fileInfoHeader.biGreenMask));
-        read(fileStream, fileInfoHeader.biBlueMask, sizeof(fileInfoHeader.biBlueMask));
-    }
- 
-    // --info-- если маска не задана, то ставим маску по умолчанию
-    if (fileInfoHeader.biRedMask == 0 || fileInfoHeader.biGreenMask == 0 || fileInfoHeader.biBlueMask == 0) {
-        fileInfoHeader.biRedMask = maskValue << (bitsOnColor * 2);
-        fileInfoHeader.biGreenMask = maskValue << bitsOnColor;
-        fileInfoHeader.biBlueMask = maskValue;
-    }
- 
-    // --info-- bmp v3
-    if (fileInfoHeader.biSize >= 56) {
-        read(fileStream, fileInfoHeader.biAlphaMask, sizeof(fileInfoHeader.biAlphaMask));
-    } else {
-        fileInfoHeader.biAlphaMask = maskValue << (bitsOnColor * 3);
-    }
- 
-    // --info-- bmp v4
-    if (fileInfoHeader.biSize >= 108) {
-        read(fileStream, fileInfoHeader.biCSType, sizeof(fileInfoHeader.biCSType));
-        read(fileStream, fileInfoHeader.biEndpoints, sizeof(fileInfoHeader.biEndpoints));
-        read(fileStream, fileInfoHeader.biGammaRed, sizeof(fileInfoHeader.biGammaRed));
-        read(fileStream, fileInfoHeader.biGammaGreen, sizeof(fileInfoHeader.biGammaGreen));
-        read(fileStream, fileInfoHeader.biGammaBlue, sizeof(fileInfoHeader.biGammaBlue));
-    }
- 
-    // --info-- bmp v5
-    if (fileInfoHeader.biSize >= 124) {
-        read(fileStream, fileInfoHeader.biIntent, sizeof(fileInfoHeader.biIntent));
-        read(fileStream, fileInfoHeader.biProfileData, sizeof(fileInfoHeader.biProfileData));
-        read(fileStream, fileInfoHeader.biProfileSize, sizeof(fileInfoHeader.biProfileSize));
-        read(fileStream, fileInfoHeader.biReserved, sizeof(fileInfoHeader.biReserved));
-    }
- 
-    // --info-- проверка на поддерку этой версии формата
-    if (fileInfoHeader.biSize != 12 && fileInfoHeader.biSize != 40 && fileInfoHeader.biSize != 52 &&
-        fileInfoHeader.biSize != 56 && fileInfoHeader.biSize != 108 && fileInfoHeader.biSize != 124) {
-        std::cout << "Error: Unsupported BMP format." << std::endl;
-        return 0;
-    }
- 
-    if (fileInfoHeader.biBitCount != 16 && fileInfoHeader.biBitCount != 24 && fileInfoHeader.biBitCount != 32) {
-        std::cout << "Error: Unsupported BMP bit count." << std::endl;
-        return 0;
-    }
- 
-    if (fileInfoHeader.biCompression != 0 && fileInfoHeader.biCompression != 3) {
-        std::cout << "Error: Unsupported BMP compression." << std::endl;
-        return 0;
-    }
- 
-    // --info-- rgb info
-    RGBQUAD **rgbInfo = new RGBQUAD*[fileInfoHeader.biHeight];
- 
-    for (unsigned int i = 0; i < fileInfoHeader.biHeight; i++) {
-        rgbInfo[i] = new RGBQUAD[fileInfoHeader.biWidth];
-    }
- 
-    // --info-- определение размера отступа в конце каждой строки
-    int linePadding = ((fileInfoHeader.biWidth * (fileInfoHeader.biBitCount / 8)) % 4) & 3;
- 
-    // --info-- чтение
-    unsigned int bufer;
- 
-    for (unsigned int i = 0; i < fileInfoHeader.biHeight; i++) {
-        for (unsigned int j = 0; j < fileInfoHeader.biWidth; j++) {
-            read(fileStream, bufer, fileInfoHeader.biBitCount / 8);
- 
-            rgbInfo[i][j].rgbRed = bitextract(bufer, fileInfoHeader.biRedMask);
-            rgbInfo[i][j].rgbGreen = bitextract(bufer, fileInfoHeader.biGreenMask);
-            rgbInfo[i][j].rgbBlue = bitextract(bufer, fileInfoHeader.biBlueMask);
-            rgbInfo[i][j].rgbReserved = bitextract(bufer, fileInfoHeader.biAlphaMask);
-        }
-        fileStream.seekg(linePadding, std::ios_base::cur);
-    }
- 
-    // --info-- вывод
-    for (unsigned int i = 0; i < fileInfoHeader.biHeight; i++) {
-        for (unsigned int j = 0; j < fileInfoHeader.biWidth; j++) {
-            std::cout << std::hex
-                      << +rgbInfo[i][j].rgbRed << " "
-                      << +rgbInfo[i][j].rgbGreen << " "
-                      << +rgbInfo[i][j].rgbBlue << " "
-                      << +rgbInfo[i][j].rgbReserved
-                      << std::endl;
-        }
-        std::cout << std::endl;
-    }
- 
-    return 1;
-}
- 
-unsigned char bitextract(const unsigned int byte, const unsigned int mask) {
-    if (mask == 0) {
-        return 0;
-    }
- 
-    // --info-- определение количества нулевых бит справа от маски
-    int
-        maskBufer = mask,
-        maskPadding = 0;
- 
-    while (!(maskBufer & 1)) {
-        maskBufer >>= 1;
-        maskPadding++;
-    }
- 
-    // --info-- применение маски и смещение
-    return (byte & mask) >> maskPadding;
+    std::vector<std::vector<RGBQUAD>> rgbInfo;
+
+    // Чтение данных из входного BMP-файла
+    read_bmp(inputFileName, fileHeader, fileInfoHeader, rgbInfo);
+
+    // Здесь будет добавлен код обработки изображения
+
+    // Запись обработанных данных в выходной BMP-файл
+    write_bmp(outputFileName, fileHeader, fileInfoHeader, rgbInfo);
+
+    return 0;
 }
 
-int main(int argc, char *argv[]){
-    read_bmp(argv[1]);
-}
 
-// --run-- sudo g++ -std=c++11 -o main main.cpp && ./main ./640X426.bmp 
+
+// --run-- sudo g++ -std=c++11 -o main main.cpp && ./main ./640X426.bmp ./out.bmp 
