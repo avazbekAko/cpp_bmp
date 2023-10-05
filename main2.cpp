@@ -2,6 +2,10 @@
 #include <fstream>
 #include <vector>
 
+
+#include <thread> // Для работы с потоками
+#include <chrono> // Для работы с временем
+
 // Отключаем выравнивание памяти для структур, чтобы гарантировать соответствие с BMP-файлами
 #pragma pack(push, 1)
 
@@ -93,7 +97,7 @@ void write_bmp(const char* fileName, BITMAPFILEHEADER& fileHeader, BITMAPINFOHEA
     const int width = fileInfoHeader.biWidth;
     const int height = fileInfoHeader.biHeight;
 
-    const int padding = (4 - (width * sizeof(RGBQUAD)) % 4) % 4;
+    // const int padding = (4 - (width * sizeof(RGBQUAD)) % 4) % 4;
 
     // Запись данных об изображении
     for (int i = 0; i < height; i++) {
@@ -101,10 +105,10 @@ void write_bmp(const char* fileName, BITMAPFILEHEADER& fileHeader, BITMAPINFOHEA
             fileStream.write(reinterpret_cast<const char*>(&rgbInfo[i][j]), sizeof(RGBQUAD));
         }
         // Запись отступов, если они есть
-        for (int k = 0; k < padding; k++) {
-            unsigned char paddingByte = 0;
-            fileStream.write(reinterpret_cast<const char*>(&paddingByte), sizeof(unsigned char));
-        }
+        // for (int k = 0; k < padding; k++) {
+        //     unsigned char paddingByte = 0;
+        //     fileStream.write(reinterpret_cast<const char*>(&paddingByte), sizeof(unsigned char));
+        // }
     }
 
     fileStream.close();
@@ -113,28 +117,16 @@ void write_bmp(const char* fileName, BITMAPFILEHEADER& fileHeader, BITMAPINFOHEA
 void rotate_image_90_degrees(const char* fileName, BITMAPFILEHEADER& fileHeader, std::vector<std::vector<RGBQUAD>>& rgbInfo, BITMAPINFOHEADER& fileInfoHeader) {
     const int height = rgbInfo.size();
     const int width = rgbInfo[0].size();
-    std::vector<std::vector<RGBQUAD>> rotated(width, std::vector<RGBQUAD>(height));
-
+    std::vector<std::vector<RGBQUAD>> rotated(height, std::vector<RGBQUAD>(width));
     for (int i = 0; i < height; i++) {
         for (int j = 0; j < width; j++) {
             rotated[j][i] = rgbInfo[i][j];
-            // if(rotated[j][i] == rgbInfo[i][j]){
-            //     std::cout<<"True";
-            // }
         }
     }
-
     
     fileInfoHeader.biWidth = height;
     fileInfoHeader.biHeight = width;
-    // return rotated;
     rgbInfo = std::move(rotated);
-    // rgbInfo = (rotated);
-
-    // if (rgbInfo[0].size() == (height)){
-    //     std::cout<<"True";
-    // }
-
     write_bmp(fileName, fileHeader, fileInfoHeader, rgbInfo);
 }
 
@@ -142,20 +134,28 @@ void rotate_image_90_degrees(const char* fileName, BITMAPFILEHEADER& fileHeader,
 void rotate_image(const char* fileName, BITMAPFILEHEADER& fileHeader, std::vector<std::vector<RGBQUAD>>& rgbInfo, BITMAPINFOHEADER& fileInfoHeader) {
     const int height = rgbInfo.size();
     const int width = rgbInfo[0].size();
-    std::vector<std::vector<RGBQUAD>> rotated(height, std::vector<RGBQUAD>(width));
-
+    std::vector<std::vector<RGBQUAD>> rotated(width, std::vector<RGBQUAD>(height));
+    // RGBQUAD rotated[w][]
+    
     for (int i = 0; i < height; i++) {
         for (int j = 0; j < width; j++) {
-            rotated[i][j] = rgbInfo[i][j];
+            rotated[j][i] = rgbInfo[j][i];
             // if(rotated[j][i] == rgbInfo[i][j]){
             //     std::cout<<"True";
+            //     std::cout<<"True";
             // }
+            // if(int(rgbInfo[i][j].rgbBlue) != 0)
+            //     std::wcout<<rgbInfo[j][i].rgbBlue<<" = "<<rgbInfo[j][i].rgbGreen<<" = "<<rgbInfo[j][i].rgbRed<<" => "<<rotated[i][j].rgbBlue<<" = "<<rotated[i][j].rgbGreen<<" = "<<rotated[i][j].rgbRed<<"\n";
+            // Поставим задержку в 1 секунды
+            // std::chrono::seconds duration(1);
+            // std::this_thread::sleep_for(duration);
+        // return;
+        // std::cout<<i<<" "<<j<<"\n";
         }
     }
-
     
-    fileInfoHeader.biWidth = height;
-    fileInfoHeader.biHeight = width;
+    // fileInfoHeader.biWidth = height;
+    // fileInfoHeader.biHeight = width;
     // return rotated;
     // rgbInfo = std::move(rotated);
     // rgbInfo = (rotated);
@@ -167,10 +167,10 @@ void rotate_image(const char* fileName, BITMAPFILEHEADER& fileHeader, std::vecto
     write_bmp(fileName, fileHeader, fileInfoHeader, rotated);
 }
 
-
-
-
 int main(int argc, char* argv[]) {
+     std::locale::global(std::locale("en_US.UTF-8"));
+
+    std::wcout << L"Привет, мир!" << std::endl;
     if (argc < 3) {
         std::cout << "Usage: " << argv[0] << " input_file output_file" << std::endl;
         return 0;
@@ -191,7 +191,7 @@ int main(int argc, char* argv[]) {
     rotate_image(outputFileName, fileHeader, rgbInfo, fileInfoHeader);
 
     // Запись обработанных данных в выходной BMP-файл
-    // write_bmp(outputFileName, fileHeader, fileInfoHeader, rgbInfo);
+    // write_bmp(outputFileName, fiheightleHeader, fileInfoHeader, rgbInfo);
 
     return 0;
 }
